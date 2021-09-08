@@ -48,7 +48,7 @@ dbPwd = env_mysql_config['password']
 '''
 mode = str(sys.argv[1])			# 'file' : 파일까지만 만든다 (=GCS에 업로드 하지 않는다)  /  'upload' : 업로드 한다
 dataOffsetStartNum = '0'	# 0 # 데이터 건수를 분리하여 처리하도록 개수 정의
-dataLimit = '10000'			# 300 # 데이터 건수를 분리하여 처리하도록 개수 정의
+dataLimit = '1'			# 300 # 데이터 건수를 분리하여 처리하도록 개수 정의
 groupId = '544'			# 294
 projectId = '9567'	# 9999
 jiraCode = 'prj3050'	
@@ -161,6 +161,9 @@ if len(responseData.resultData) == 0:
 
 # ResultJson 결과 정보 가져오기
 responseData.setGcsSourceJsonThread(requestInfo)
+
+
+print(responseData.resultData)
 sys.exit(0)
 responseData.setGcsResultJsonThread(requestInfo)
 # ########### Header #####gl#######

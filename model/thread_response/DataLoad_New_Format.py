@@ -232,48 +232,23 @@ class DataLoad:
 	# GCS SourceJson 데이터 Dict 대입
 	def setGcsSourceJsonThread(self, requestInfo):
 		# ThreadPool
-		executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
-
 		storage_client = storage.Client()
 		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
-
-		index = 0
-		failIndex = 0
-		futures = []
-		items = self.resultData
-		for item in items:
-			futures.append(executor.submit(self.getGcsSourceJsonWorker, requestInfo=requestInfo, index=index, item = item, bucket=bucket))
-			index += 1
-
-		index = 0
-		for future in concurrent.futures.as_completed(futures):
-			data = future.result()
-
-			if data['status'] <= 0:
-				self.gcsResultJsonNotFind[data['data_idx']] = data['data_idx']
-				failIndex += 1
-			else :
-				self.resultDict[data['data_idx']]['source_data'] = data['source_data']
-
-			index += 1
-
-
-		self.gcsSourceCount = index
-		self.gcsSourceFailCount = failIndex
-		print('GcsSourceJsonFile Count : ', index)
-		print('GcsSourceJsonFile Fail Count : ', failIndex)
-		if failIndex > 0 :
-			print("Result ID Type ERROR :: Fail Data : " + ", ".join(list(self.gcsResultJsonNotFind.keys())))
-
-
-
+		with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+			index = 0
+			failIndex = 0
+			futures = []
+			items = self.resultData
+			for item in items:
+				futures.append(executor.submit(self.getGcsSourceJsonWorker, requestInfo=requestInfo, index=index, item = item, bucket=bucket))
+				index += 1
 
 
 	def getGcsSourceJsonWorker(self, requestInfo, index, item, bucket):
-
 		print('setGcsSourceJson:: Processing...[', index, ']')
 		key = item['data_idx']
-		return_data = {'status': 1, 'data_idx': key, 'source_data': {}}
+		return_data = item.update({'source_status' : 1})
+
 
 		dataIdx = str(item['data_idx'])
 		projectId = requestInfo.projectId
@@ -286,16 +261,16 @@ class DataLoad:
 			gcsSourceJson = self.GcsStorageUtil.json_loads_with_prefix_openfile(bucket, self.gcsDownloadBucketCode, gcsSourceFilePath,
 																	   gcsSourceFileName)
 
-			return_data['source_data'] = gcsSourceJson
-			print(gcsSourceJson)
-			return_data['status'] = 1
-			return return_data
+			for key,val in gcsSourceJson.items():
+				item[key] = val
+		
+			item['source_status'] = 1
+			return item
 
 		except:
-			logging.exception('Fail : ', dataIdx)
-			return_data['source_data'] = ''
-			return_data['status'] = 0
-			return return_data
+			print('get source failed : ', )
+			item.update({'source_status' : 0})
+			return item
 
 
 	# GCS ResultJson 데이터 Dict 대입
