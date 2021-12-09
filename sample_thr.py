@@ -24,11 +24,13 @@ from model.google.storage.GcsStorageUtil import GcsStorageUtil
 from model.thread_response.DataLoad_New_Format import DataLoad
 from model.thread_response.DataExtract_New_Format import DataExtract
 from model.thread_response.DataHeaderValues import HeaderValues
+from model.external.extract import data
 
 
 # Module Load
 GcsStorageUtil = GcsStorageUtil()
 PathUtil = PathUtil()
+
 '''
 동작시간 설정
 ''' 
@@ -48,46 +50,55 @@ dbPwd = env_mysql_config['password']
 '''
 mode = str(sys.argv[1])			# 'file' : 파일까지만 만든다 (=GCS에 업로드 하지 않는다)  /  'upload' : 업로드 한다
 dataOffsetStartNum = '0'	# 0 # 데이터 건수를 분리하여 처리하도록 개수 정의
-dataLimit = '1'			# 300 # 데이터 건수를 분리하여 처리하도록 개수 정의
-groupId = '544'			# 294
-projectId = '9567'	# 9999
-jiraCode = 'prj3050'	
+dataLimit = '1111110'			# 300 # 데이터 건수를 분리하여 처리하도록 개수 정의
+groupId = '436'			# 294
+projectId = '9440'	# 9999
+jiraCode = '9440'	
 fileFormat = 'csv'		# 결과파일(매칭) 포멧 - json, csv, excel
-grand_mail = 'jeyfree@crowdworks.kr'# 권한 부여할 메일
+grand_mail = 'dhyeom@crowdworks.kr'# 권한 부여할 메일
 if '/' in grand_mail:
 	grand_mail = grand_mail.split('/')
+''' 
+extract data from external source
+'''
+# Extract = pd.read_excel('/home/de/jhoon/data_extraction/periperal/NOT.xlsx')
+# imported = list(Extract['data_idx'])
 '''
 query 변수
 '''
-dataStatusCode =[]
-#dataStatusCode = ["CHECK_END", "CHECK_ING", "CHECK_REJECT", "CHECK_REWORK", "WORK_END", "ALL_FINISHED",'WORK_ING'] # list
-#dataStatusCode = ['WORK_END'] # "ALL_FINISHED", "WORK_END"
-#dataStatusCode = ["CHECK_END", "CHECK_ING", "CHECK_REJECT", "CHECK_REWORK", "WORK_END",'WORK_ING']
+# dataStatusCode =['ALL_FINISHED']
+# dataStatusCode = ['WORK_END', 'CHECK_REJECK'] # list
+# dataStatusCode = ["CHECK_REWORK","ALL_FINISHED", "WORK_END",'CHECK_END','CHECK_REJECT'] # "ALL_FINISHED", "WORK_END"
+# dataStatusCode = ["CHECK_END", "CHECK_ING", "CHECK_REJECT", "CHECK_REWORK", "WORK_END",'WORK_ING']
 '''
 작업 가능 데이터 여부
 '''
-#queryfilter = ''
-queryfilter = 'pjd.problem_yn="0" ' # 작업가능 데이터만 추출
-#queryfilter = ' AND pjd.problem_yn="1" ' # 작업 불가능 데이터만 추출
+# queryfilter = ''
+# queryfilter = 'pjd.problem_yn="0" ' # 작업가능 데이터만 추출
+# queryfilter = ' pjd.problem_yn="1" ' # 작업 불가능 데이터만 추출
 '''
 데이터 아이디별 추출시
 '''
-data_idx =[]
+# df = pd.read_excel('/home/de/jhoon/data_extraction/periperal/lists2.xlsx')
+
+data_idx = []
+
+
 #data_idx = [55835104,55835121]
 '''
 기간 선택
 '''
-#queryfilter = ''
+queryfilter = ''
 # queryfilter += 'AND pjd.check_edate BETWEEN "'+PathUtil.getPreviousWeekYYYYMMDD()+' 00:00:00" AND "'+PathUtil.getYesterdayYYYYMMDD()+' 23:59:59" '
 ############# TODO : check_edate 인지 work_edate 인지 잘 보기 (all_fiinsied만 추출 시 : check_edate가 맞음)
 ############# TODO : check_edate 인지 work_edate 인지 잘 보기 (모든데이터 추출 시 : work_edate가 맞음)
 # ALL_FINISHED 작업 시
-#queryfilter += ' AND pjd.check_edate BETWEEN "2021-08-13 00:00:00" AND "2021-09-01 23:59:59" '
-#queryfilter += ' AND pjd.check_edate >= "2021.08.05 00:00:00" '
+# queryfilter += ' AND pjd.check_edate BETWEEN "2021-11-01 00:00:00" AND "2021-11-30 23:59:59" '
+# queryfilter += ' AND pjd.check_edate <= "2021.11.19 23:59:59" '
 # WORK_END 작업 시
-#queryfilter += 'AND pjd.work_edate BETWEEN "2021-09-05 00:00:00" AND "2021-09-05 23:59:59"'
-# queryfilter += ' AND pjd.work_edate <= "2021-03-05 12:00:00" '
-#queryfilter += 'AND pjd.work_sdate BETWEEN "2021-07-09 11:01:00" AND "2021-07-15 00:00:00"'
+# queryfilter += ' pjd.work_edate BETWEEN "2021-12-09 09:00:01" AND "2021-12-09 09:00:00"'
+# queryfilter += ' pjd.work_edate <= "2021-11-18 09:00:00" '
+# queryfilter += 'AND pjd.work_sdate BETWEEN "2021-07-09 11:01:00" AND "2021-07-15 00:00:00"'
 '''
 sort
 '''
@@ -101,7 +112,7 @@ sourceFileJsonKeyName = 'file_name'		# 소스파일다운로드 할 Json 키명(
 ###### 프로그램 설정 변수  바뀔필요 적음
 #zipPassword = 'cw#data!'+projectId
 
-localDownloadDefaultPath = '/data/collection/'+jiraCode+'/' + PathUtil.getTodayYYYYMMDD() + '/'
+localDownloadDefaultPath = '/data/collection/'+jiraCode+'/'
 logging_path = '/home/de/jhoon/log/'+jiraCode+'/'
 PathUtil.mkdir_p(logging_path)
 logging.basicConfig(filename=logging_path+'{}.log'.format(PathUtil.getTodayYYYYMMDD()),format='%(asctime)s %(message)s', level=logging.INFO)
@@ -134,6 +145,7 @@ historyDataIdFilePath = '/home/de/jhoon/filter/filter_'+projectId+'.csv'
 responseData = DataLoad(gcsDownloadBucketCode, gcsUploadBucketCode)
 extract = DataExtract(gcsDownloadBucketCode, gcsUploadBucketCode)
 # header value 추가
+
 headerValues = HeaderValues(gcsDownloadBucketCode, gcsUploadBucketCode)
 
 # 기본 요청 정보 설정
@@ -153,40 +165,45 @@ finalDataData = responseData.resultData
 # 추출할 것이 없으면 프로그램 종료
 if len(responseData.resultData) == 0:
 	print('Data Length : %s !!' % str(len(responseData.resultDict)))
-	sys.exit(0)
 	
-# Label 정보 가져오기
-# responseData.setLabels(requestInfo)
+
+'''
+get label info
+'''
+#label_dict = headerValues.setLabels(requestInfo, responseData.resultData[0],projectId)
+
+'''
+source_json
+'''
+source_error = []
+source_error = responseData.setGcsSourceJsonThread()
+
+'''
+result_json
+'''
+result_error = []
+result_error = responseData.setGcsResultJsonThread()
 
 
-# ResultJson 결과 정보 가져오기
-responseData.setGcsSourceJsonThread(requestInfo)
-
-
-print(responseData.resultData)
-sys.exit(0)
-responseData.setGcsResultJsonThread(requestInfo)
 # ########### Header #####gl#######
-header = headerValues.getHeaderArr(responseData)
+#header = headerValues.setLabels(requestInfo,responseData.resultData,projectId)
 sourceFileJsonKeyName = 'file_name'
 start_clean = cleaner(localDownloadDefaultPath,gcsUploadPrefixFileCode,jiraCode,projectId,groupId)
 
 # ########### Values ##############
-values,source_data= headerValues.getValuesArr(responseData, requestInfo, localDownloadDefaultPath)
 #파일 다운로드용
+content_error = responseData.setGcsContentFileThread(sourceFileJsonKeyName, localDownloadDefaultPath)
 
-# try:
-# 	responseData.setGcsContentFileThread(requestInfo, sourceFileJsonKeyName, localDownloadDefaultPath)
-# except:
-# 	pass
+
+values = responseData.resultData
 localDefaultPath = '/home/de/jhoon/'+jiraCode+'/'
 df = pd.DataFrame.from_dict(values)
+# print(df['result'])
 pickle_path = "/home/de/jhoon/dump/%s" %jiraCode
 df.to_pickle(pickle_path)
 print('sample pickle data path is '+pickle_path)
-
 start_clean.preprocess(values)
-
+#start_clean.clean(values)
 end_time = time.time() - start_time
 times = str(datetime.timedelta(seconds=end_time)).split(".")[0]
 if 'AND pjd.problem_yn="0"' in queryfilter:
@@ -200,29 +217,28 @@ elif 'AND pjd.problem_yn=' not in queryfilter:
 else:
 	print('errorr')
 	raise 1
-payloadStr = "프로젝트 코드 : "+projectCode + "\n"
-payloadStr += "프로젝트 번호 : "+requestInfo.projectId + "\n"
+
+payloadStr = "프로젝트 번호 : "+requestInfo.projectId + "\n"
+
 payloadStr += "고객사 번호 : "+groupId + "\n"
-payloadStr += "데이터(작업) 건수 : "+ str(len(list(responseData.resultDict.values()))) + "\n"
-payloadStr += "GcsResultJsonFile Count : " + str(responseData.gcsResultCount) + "\n"
-payloadStr += "GcsResultJsonFile Fail Count : " + str(responseData.gcsResultFailCount) + "\n"
-if responseData.gcsResultFailCount > 0:
-	payloadStr += "GcsResultJsonFile Fail Data : " + ", ".join(list(responseData.gcsResultJsonNotFind.keys())) + "\n"
-payloadStr += "GcsSourceJsonFile Count : " + str(responseData.gcsSourceCount) + "\n"
-payloadStr += "GcsSourceJsonFile Fail Count : " + str(responseData.gcsSourceFailCount) + "\n"
-if responseData.gcsSourceFailCount > 0:
-	payloadStr += "GcsSourceJsonFile Fail Data : " + ", ".join(list(responseData.gcsSourceJsonNotFind.keys())) + "\n"
-payloadStr += "GcsContentFile Count : " + str(responseData.gcsContentFileCount) + "\n"
-payloadStr += "GcsContentFile Fail Count : " + str(responseData.gcsContentFileFailCount) + "\n"
-if responseData.gcsContentFileFailCount > 0:
-	payloadStr += "GcsContentFile Fail Data : " + ", ".join(list(responseData.gcsContentFileNotFind.keys())) + "\n"
+total = len(responseData.resultData)
+payloadStr += "데이터(작업) 건수 : "+ str(total) + "\n"
+payloadStr += "GcsResultJsonFile Count : " + str(total-len(result_error)) + "\n"
+payloadStr += "GcsResultJsonFile Fail Count : " + str(len(result_error)) + "\n"
+if len(result_error) > 0:
+	payloadStr += "GcsResultJsonFile Fail Data : " + str(result_error) + "\n"
 
-payloadStr += "GcsResultValueFail Count : " + str(headerValues.gcsResultValueFailCount) + "\n"
-if headerValues.gcsResultValueFailCount > 0:
-	payloadStr += "GcsSourceJsonFile Fail Data : " + ", ".join(list(headerValues.gcsResultValueNotFind.keys())) + "\n"
+payloadStr += "GcsSourceJsonFile Count : " + str(total-len(source_error)) + "\n"
+payloadStr += "GcsSourceJsonFile Fail Count : " + str(len(source_error)) + "\n"
+if len(source_error) > 0:
+	payloadStr += "GcsSourceJsonFile Fail Data : " + str(source_error) + "\n"
 
-start_upload = uploader(projectCode, localDownloadDefaultPath, file_key,zipPassword, gcsUploadDefaultPath, gcsUploadPrefixFileCode,grand_mail,historyDataIdFilePath,payloadStr)
-if (flag == "upload"):
+print(payloadStr)
+# payloadStr += "GcsResultValueFail Count : " + str(headerValues.gcsResultValueFailCount) + "\n"
+# if headerValues.gcsResultValueFailCount > 0:
+# 	payloadStr += "GcsSourceJsonFile Fail Data : " + ", ".join(list(headerValues.gcsResultValueNotFind.keys())) + "\n"
+start_upload = uploader(localDownloadDefaultPath, file_key, gcsUploadDefaultPath, gcsUploadPrefixFileCode,grand_mail,historyDataIdFilePath,payloadStr)
+if (mode == "upload"):
 	payloadStr = start_upload.upload()
 logging.info(payloadStr)
 csvDataFile = open(historyDataIdFilePath, 'a', encoding='utf-8')
@@ -236,3 +252,12 @@ times = str(datetime.timedelta(seconds=end_time)).split(".")[0]
 payloadStr += "소요시간 : %s" % times
 print(payloadStr)
 print("Success!!")
+
+# webhook_url= "https://hooks.slack.com/services/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"
+# content= "tmp"
+# payload= {"text": content}
+ 
+# requests.post(
+# 	webhook_url, data=json.dumps(payload),
+# 	headers={'Content-Type':'application/json'}
+# )

@@ -37,15 +37,22 @@ LIMIT {limit} OFFSET {offset_str}
 
 # 기존에 닉네임, 핸드폰 번호 추가
 setDBdata_nick_phone_query= """
-SELECT pjd.data_idx,
-pj.project_id,
+SELECT 
 pjd.src_idx as source_id,
-check_edate,
+pjd.prog_state_cd,
+pjd.data_idx,
+pj.project_id,
 work_edate,
-mem.login_id,
-mem.member_id,
-project_name,
-mem.gender_cd
+check_edate,
+pj.customer_group_id,
+mem.member_nm,
+mem.login_id as WORK_nm,
+mem.member_id
+
+
+
+
+
 
 
 FROM CW_PROJECT pj
@@ -54,16 +61,24 @@ FROM CW_PROJECT pj
                 AND pj.project_id in ({proId}))
          INNER JOIN TB_PRJ_DATA pjd
                  ON (pjm.prj_idx = pjd.prj_idx)
-         INNER JOIN TB_MEMBER mem
-                    ON (pjd.work_user = mem.member_id)
+                        INNER JOIN TB_MEMBER mem
+                 ON (pjd.work_user = mem.member_id)
+
+
+
+
 where
 {data_idx}
 {whereInList}
 {queryFilter} 
 {orderBy}
+
 LIMIT {limit} OFFSET {offset_str};
 
 """
+
+
+
 # setDBdata_nick_phone_query = '''
 # SELECT prj2.src_idx,
 #         prj2.data_idx,

@@ -21,11 +21,9 @@ class uploader:
     GcsStorageUtil = GcsStorageUtil()
     PathUtil = PathUtil()
     
-    def __init__(self,projectCode, localDownloadDefaultPath, file_key,zipPassword, gcsUploadDefaultPath, gcsUploadPrefixFileCode,grand_mail,historyDataIdFilePath,payloadStr):
-        self.projectCode = projectCode
+    def __init__(self, localDownloadDefaultPath, file_key, gcsUploadDefaultPath, gcsUploadPrefixFileCode,grand_mail,historyDataIdFilePath,payloadStr):
         self.localDownloadDefaultPath =localDownloadDefaultPath
         self.file_key= file_key
-        self.zipPassword = zipPassword
         self.gcsUploadDefaultPath = gcsUploadDefaultPath
         self.gcsUploadPrefixFileCode = gcsUploadPrefixFileCode
         self.grand_mail = grand_mail
@@ -34,11 +32,9 @@ class uploader:
         gcsUploadBucketCode = 'cw-downloads'   
         gcsDownloadBucketCode = 'cw_platform'
         extract = DataExtract(gcsDownloadBucketCode, gcsUploadBucketCode)
-        zipFileName = extract.makeZipCompress(self.projectCode, self.localDownloadDefaultPath, self.file_key)
-        zipFileName = extract.makeZipCompressPassword(self.projectCode, self.localDownloadDefaultPath, zipFileName, self.zipPassword)
+        zipFileName = extract.makeZipCompress(self.localDownloadDefaultPath, self.file_key)
         gcsUploadFilePathName = extract.gcsUploadZipFile(self.localDownloadDefaultPath, zipFileName, self.gcsUploadDefaultPath, self.gcsUploadPrefixFileCode + zipFileName, self.grand_mail)
         self.payloadStr += "압축파일명 : " + self.gcsUploadPrefixFileCode+zipFileName + "\n"
-        self.payloadStr += "압축 비밀번호 : " + self.zipPassword + "\n"
         self.payloadStr += "다운로드(권한) 경로 : " + "https://console.cloud.google.com/storage/browser/_details/" + gcsUploadBucketCode + "/" + gcsUploadFilePathName + "\n"
         return self.payloadStr
     

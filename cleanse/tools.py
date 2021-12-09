@@ -10,7 +10,11 @@ def name_without_extension(full_name):
         return full_name
 def remove_dir(full_dir):
     return os.path.basename(full_dir)
-
+    
+def append_val(path,val):
+    name = name_without_extension(path)
+    ext = os.path.splitext(path)
+    return name+'_'+val+ext[1]
 def rotate(img,x):
     if x == '3':
         img=img.rotate(180, expand=True)

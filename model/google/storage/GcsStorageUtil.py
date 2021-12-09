@@ -8,9 +8,11 @@ from model.path.PathUtil import PathUtil
 
 class GcsStorageUtil:
 	PathUtil = None
+	
 
 	def __init__(self):
 		self.PathUtil = PathUtil()
+		self.storage_client = storage.Client()
 
 	def json_loads_with_prefix(self, bucket_name, prefix, file_name):
 		storage_client = storage.Client()
@@ -134,3 +136,11 @@ class GcsStorageUtil:
 				source_file_name, destination_blob_name
 			)
 		)
+	def download_spec_file(self,bucket_nm, gID,pID,seq,data_idx,localname):
+		
+		storage_client = storage.Client()
+		
+		bucket = storage_client.get_bucket(bucket_nm)
+		contents_path = self.PathUtil.getGcsResultFilePath(gID, pID)
+		result_file = self.PathUtil.getGCSResultFileName(data_idx, pID)+'_'+str(seq)
+		self.download_blob_openfile(bucket, bucket_nm, contents_path+result_file, localname)

@@ -159,7 +159,7 @@ class DataExtract:
 			return ''
 
 	# 압축 파일 생성 (원본파일은 읽지 않고 바로 압축파일로 이동된다)
-	def makeZipCompress(self, projectCode, localDownloadDefaultPath, fileKey):
+	def makeZipCompress(self, localDownloadDefaultPath, fileKey):
 		# 압축 하기
 		print("Make Zip Files...")
 		zipFileName = fileKey + '.zip'

@@ -6,19 +6,16 @@ import pandas as pd
 import zipfile
 import concurrent.futures
 from google.cloud import storage
-import xlsxwriter
 from PIL import Image
 import numpy as np
 import math
 import re
 import json
 import io
-import moviepy.editor as mpe
 import time
 import uuid
 from Crypto.Cipher import AES
 import base64
-from scipy.io.wavfile import read as read_wav
 import librosa
 import soundfile
 import shutil
@@ -41,165 +38,208 @@ class HeaderValues:
         self.gcsDownloadBucketCode = gcsDownloadBucketCode
         self.gcsUploadBucketCode = gcsUploadBucketCode
 
-    # def makeExcelZipCompress(self, projectCode, localDownloadDefaultPath, fileKey):
-    #     # 압축 하기
-    #     print("Make Zip Files...")
-    #     zipFileName = fileKey + '.zip'
-    #     zipFilePathName = localDownloadDefaultPath + zipFileName
-    #     new_zips = zipfile.ZipFile(zipFilePathName, 'w')
-    #     for folder, subfolders, files in os.walk(localDownloadDefaultPath):
-    #         for file in files:
-    #             if file.find('.xlsx') <= -1:  # ZIP 파일 필터
-    #                 continue
-    #             else:
-    #                 new_zips.write(os.path.join(folder, file),
-    #                                os.path.relpath(os.path.join(folder, file), localDownloadDefaultPath),
-    #                                compress_type=zipfile.ZIP_STORED)
-    #                 print(os.path.join(folder, file))
-    #                 # print(os.path.relpath(os.path.join(folder,file), localDownloadDefaultPath))
-    #                 if localDownloadDefaultPath.find('/data/collection/' + projectCode) > -1:  # projectCode 방어로직
-    #                     # 압축하고 원본 삭제
-    #                     os.remove(os.path.join(folder, file))
-    #     new_zips.close()
-    #     return zipFileName
-
-    # 압축 파일 생성 (원본파일은 읽지 않고 바로 압축파일로 이동된다)
-    # def makeZipCompress(self, projectCode, localDownloadDefaultPath, fileKey):
-    #     # 압축 하기
-    #     print("Make Zip Files...")
-    #     zipFileName = fileKey + '.zip'
-    #     zipFilePathName = localDownloadDefaultPath + zipFileName
-    #     new_zips = zipfile.ZipFile(zipFilePathName, 'w')
-    #     for folder, subfolders, files in os.walk(localDownloadDefaultPath):
-    #         for file in files:
-    #             if file.find('.zip') > -1:  # ZIP 파일 필터
-    #                 # if file.find('.zip') > -1 or file.find('.xlsx') > -1 or file.find('.csv') > -1 or file.find('.json') > -1:	# ZIP 파일 필터
-    #                 continue
-    #             else:
-    #                 new_zips.write(os.path.join(folder, file),
-    #                                os.path.relpath(os.path.join(folder, file), localDownloadDefaultPath),
-    #                                compress_type=zipfile.ZIP_STORED)
-    #                 print(os.path.join(folder, file))
-    #                 # print(os.path.relpath(os.path.join(folder,file), localDownloadDefaultPath))
-    #                 if localDownloadDefaultPath.find('/data/collection/' + projectCode) > -1:  # projectCode 방어로직
-    #                     # 압축하고 원본 삭제
-    #                     os.remove(os.path.join(folder, file))
-    #     new_zips.close()
-    #     return zipFileName
-
-    # responseData : resultDict > source_data - 소스 데이터 내용
-
-    #데이터 컬럼 배열에 넣기
-    def getHeaderArr(self, responseData):
-        header = []
-        header.append('DataID')
-        header.append('UserID')
-
-        name_map = ''
-        # 추출 포멧 정의
-        index = 0
-        # by id
-        for labelKey, labelVal in responseData.labelDict.items():
-
-            if labelVal['id'] == 101:
-                index += 1
-                continue
-
-            elif labelVal['id'] == 103:
-                index += 1
-                continue
-
-            if labelVal['label'] == '':
-                pass
-            else:
-                if isinstance(name_map, dict) is True:
-                    header.append(name_map[labelKey].replace(',', ' ').replace('\n', ''))
-                else:
-                    # 레이블
-                    header.append(labelVal['label'].replace(',',' ').replace('\n',''))
-                    # 값
-                    # header.append(labelKey.replace(',', ' ').replace('\n', ''))
-                    pass
-            index += 1
-        print('Header : ', header)
-        return header
-
-    #데이터 값 배열에 넣기
-    def getValuesArr(self, responseData, requestInfo, localDownloadDefaultPath):
-        resultData = []
-        sourceData = []
-        data_index = []
-        data = []
-        index = 0
-
-        tmpKey = ''
-        tmpIndex = 0
-
-        takePictureFileNameIndex = 0
-        takeVideoFileNameIndex = 1
-        failIndex = 0
-        # ThreadPool
-        futures = []
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=40) # default 30
-        storage_client = storage.Client()
-        self.storage_client = storage.Client()
-        bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
-
-        now = datetime.datetime.now()
-        # self.aess = AESCipherCBC("___freebee_db___", "___freebee_db___")
-        for rKey, rVal in responseData.resultDict.items():
-            rKey = str(rKey)
-
-            # dataID 이외의 값 건너뛰기wwwsasdad
-            if rKey.isdigit() is False:
-                continue
-            # normal process
-            futures.append(executor.submit(self.getValuesArrWorker, responseData=responseData, requestInfo=requestInfo,
-                                           localDownloadDefaultPath=localDownloadDefaultPath, index=index, rKey=rKey,
-                                           rVal=rVal, bucket=bucket))
-            index += 1
-
-        index = 0
-        for future in concurrent.futures.as_completed(futures):
-            data = future.result()
-            # if data['status'] <= 0:
-            #     self.gcsResultValueFailCount += 1
-            #     self.gcsResultValueNotFind[data['data_idx']] = data['data_idx']
-            #     failIndex += 1
-            # else:
-            resultData.append(data)
-
-            index += 1
-
-        now = datetime.datetime.now()
-        print(now)
-        self.extractCount = index
-        print("Data Rows : ", index)
-
-        return resultData, sourceData
-
-    def getValuesArrWorker(self, responseData, requestInfo, localDownloadDefaultPath, index, rKey, rVal, bucket):
-        
-        print('Thread Processing...[', index, '] : ', rKey)
-        data = []
-        source_data = []
-        return_data = {}
-
+    def interchange_dict(self,table):
+        lab = table['label']
+        val = table['value']
+        return {val:lab}
+    
+    def label_template(self,elem):
+        return_dict = {}
+        # print(elem)
         try:
-            return_data = {'status': 1, 'data_idx': rKey}
-            for keys,elems in rVal.items():
-                if (keys != 'result_data'):
-                    return_data[keys] = elems
-                else:
-                    for keys,elems in rVal['result_data'].items():
-                        keys = tools.get_header(keys)
-                        return_data[keys] = elems
-            index += 1
-            
-            return return_data
-        except Exception as ex:
-            print("ERROR : ", ex)
-            return_data = {'status': 0, 'data_idx': rKey, 'data': None}
-            return return_data
+            id = str(elem['id'])
+            values = elem['values']
+            field = values['label']
+        except:
+            pass
 
+    #203 Radiobutton
+        if (id == '203'):
+            name = values['name']
+            val_lab = values['children']
+            return_dict.update({'label':values['label']})
+            for each in val_lab:
+                each = self.interchange_dict(each)
+                return_dict.update(each)
+
+
+    #204 checkbox
+        elif (id == '204'):
+            name = values['name']
+            val_lab = values['children']
+            return_dict.update({'label':values['label']})
+            for each in val_lab:
+                each = self.interchange_dict(each)
+                return_dict.update(each)
+                
+    #205 multiselect
+        elif (id == '205'):
+            name = values['name']
+            val_lab = values['children']
+            return_dict.update({'label':values['label']})
+            for each in val_lab:
+                each = self.interchange_dict(each)
+                return_dict.update(each)
+
+
+    #206 Drop Down
+        elif (id=='206'):
+            name = values['name']
+            val_lab = values['children']
+            return_dict.update({'label':values['label']})
+            for each in val_lab:
+                each = self.interchange_dict(each)
+                return_dict.update(each)
+
+    #304 Recording
+        elif (id == '304'):
+            name = values['name']
+            return_dict.update({'label' : values['label']})
+
+    #unspecified or none
+        else:
+            return {}
+        return {name:return_dict}
+
+
+    def setLabels(self, requestInfo, result, projectId):
+        total_labels = {}
+        val_to_label = {}
+        result =result[0]
+        storage_client = storage.Client()
+        bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
+        gcsResultFilePath = self.PathUtil.getGcsResultFilePath(requestInfo.groupId, projectId)
+        gcsResultFileName = self.PathUtil.getGCSResultFileName(str(result['data_idx']), projectId)
+        gcsResultJson = self.GcsStorageUtil.json_loads_with_prefix_openfile(
+				bucket
+				, self.gcsDownloadBucketCode
+				, gcsResultFilePath
+				, gcsResultFileName
+			)
+        fields = gcsResultJson['fields']
+        for each_field in fields:
+            if (each_field['id']) == 999:
+                sub_child = each_field['children']
+            else:
+                pass
+            for child in sub_child:
+                total_labels.update(self.label_template(child))
+        print('total labels \n\n')
+        print(total_labels)  
+            
+    #     print('gcsResultJso  n : ', gcsResultJson)
+
+    #     fieldIndex = 0
+    #     for field in gcsResultJson['fields']:
+
+    #         # TODO : 범용적으로 모듈화 로직 예정
+    #         for children in field['children']:
+    #             print(children)
+    #             # # Header Text
+    #             # if children['id'] == 101:	
+    #             # 	name_uid = 'name_' + children['values']['uid']
+    #             # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label']}
+
+    #             # # Line Break (pass)
+    #             # elif children['id'] == 102:
+    #             # 	continue
+
+    #             # # Rich Editor
+    #             # elif children['id'] == 103:	
+    #             # 	name_uid = 'name_' + children['values']['uid']
+    #             # 	self.labelDict[name_uid] = {'id': children['id']}
+
+    #             # # Import Data
+    #             # elif children['id'] == 104:	
+                # 	continue
+
+                # # Long Text
+                # elif children['id'] == 202:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # Short Text
+                # elif children['id'] == 201:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # Radio Button
+                # elif children['id'] == 203:
+                # 	name_uid = children['values']['name']
+                # 	options = {}
+                # 	for option in children['values']['children']:
+                # 		options[option['value']] = option['label']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
+
+                # # CheckBox
+                # elif children['id'] == 204:
+                # 	name_uid = children['values']['name']
+                # 	options = {}
+                # 	for option in children['values']['children']:
+                # 		options[str(option['value'])] = str(option['label'])
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
+
+                # # Multi Select
+                # elif children['id'] == 205:
+                # 	name_uid = children['values']['name']
+                # 	options = {}
+                # 	for option in children['values']['children']:
+                # 		options[str(option['value'])] = str(option['label'])
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
+
+                # # Drop Down
+                # elif children['id'] == 206:
+                # 	name_uid = children['values']['name']
+                # 	options = {}
+                # 	for option in children['values']['children']:
+                # 		options[str(option['value'])] = str(option['label'])
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
+
+                # # File Upload
+                # elif children['id'] == 207:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # lookup
+                # elif children['id'] == 208:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+                # # Take Picture
+                # elif children['id'] == 301:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # Image Bounding
+                # elif children['id'] == 302:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': 'Image Bounding', 'value': children['values']}
+
+                # # Recording
+                # elif children['id'] == 304:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # 쌔로운거
+                # elif children['id'] == 305:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': ''}
+                
+                # # Take Video
+                # elif children['id'] == 307:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
+
+                # # Text Tagging (TODO : 개발 필요)
+                # elif children['id'] == 309:
+                # 	name_uid = children['values']['name']
+                # 	self.labelDict[name_uid] = {'id': children['id'], 'label': 'Text Tagging'}
+
+                # # 처음 보는 케이스 시 중지
+                # else:
+                # 	print("Result ID Type ERROR :: " + str(children['id']))
+                # 	sys.exit()
+
+#             fieldIndex+=1
+#         index+=1
+
+# GCS SourceJson 데이터 Dict 대입

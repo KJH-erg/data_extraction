@@ -3,7 +3,7 @@ import sys
 from tqdm import tqdm
 import hashlib
 import logging
-
+import json
 
 import os
 import pathlib
@@ -29,8 +29,7 @@ class DataLoad:
 
 	labelDict = {} # Label
 	resultDict = {}	# DB + ResultJson
-
-	gcsResultJsonNotFind = {}
+	gcsError = []
 
 	def __init__(self, gcsDownloadBucketCode, gcsUploadBucketCode):
 		self.PathUtil = PathUtil()
@@ -39,6 +38,9 @@ class DataLoad:
 		self.gcsUploadBucketCode = gcsUploadBucketCode
 		self.resultData = []
 	# DB 조회
+	'''
+	query related methods
+	'''
 	def add_query_arg(self,input, sql):
 		if(len(input) == 0):
 			return ""
@@ -67,14 +69,13 @@ class DataLoad:
 		self.dataRows = len(self.resultData)
 
 		print("DB Rows : ", len(self.resultData))
+
 	def setDbDatas(self, db, requestInfo, offset, limit, queryFilter, orderBy,data_idx,sql):
 		db.connect()
-
 		query_argu = {}
 		query_argu['proId'] = requestInfo.projectId
-		################################
-		# TODO : 상태 검색
-		################################
+
+		
 		whereInList = requestInfo.dataStatus
 		
 		whereinlist = 'pjd.prog_state_cd IN ({}) AND '
@@ -93,144 +94,65 @@ class DataLoad:
 			self.__setQueryResult(query_result)
 		db.disconnect()
 		self.dataRows = len(self.resultData)
-
 		print("DB Rows : ", len(self.resultData))
 
 	# DB 조회 결과 값 Dict 대입
 	def __setQueryResult(self, query_result):
 		self.resultData.append(query_result)
 
-	# GCS 결과 파일을 하나 읽어서 Label Dict 대입
-	# def setLabels(self, requestInfo):
-	# 	index = 0
-	# 	items = self.resultDict.items()
-	# 	for key, value in items:
-	# 		if index > 0:
-	# 			break
-	# 		dataIdx = value['data_idx']
-	# 		projectId = requestInfo.projectId
+	'''
+	get_source_data methods
+	'''
+	def setGcsSourceJsonThread(self):
+		# ThreadPool
+		storage_client = storage.Client()
+		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
+		with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+			index = 0
+			futures = []
+			items = self.resultData
+			for item in items:
+				futures.append(executor.submit(self.getGcsSourceJsonWorker, index=index, item = item, bucket=bucket))
+				index += 1
+			source_error = []
+			for future in concurrent.futures.as_completed(futures):
+				elem = future.result()
+				if (elem['source_status'] <= 0):
+					source_error.append(elem['data_idx'])	
+				else:
+					pass
+		return source_error
 
-	# 		gcsResultFilePath = self.PathUtil.getGcsResultFilePath(requestInfo.groupId, requestInfo.projectId)
-	# 		gcsResultFileName = self.PathUtil.getGCSResultFileName(dataIdx, projectId)
-	# 		gcsResultJson = self.GcsStorageUtil.json_loads_with_prefix(self.gcsDownloadBucketCode, gcsResultFilePath, gcsResultFileName)
 
-	# 		print('gcsResultJson : ', gcsResultJson)
+	def getGcsSourceJsonWorker(self, index, item, bucket):
+		print('setGcsSourceJson:: Processing...[', index, ']')
+		key = item['data_idx']
+		item.update({'source_status' : 1})
+		dataIdx = str(item['data_idx'])
+		projectId = str(item['project_id'])
+		sourceIdx = str(item['source_id'])
+		gcsSourceFilePath = self.PathUtil.getGcsSourceFilePath(str(item['customer_group_id']), projectId)
+		gcsSourceFileName = self.PathUtil.getGcsSourceFileName(sourceIdx, projectId)
 
-	# 		fieldIndex = 0
-	# 		for field in gcsResultJson['fields']:
+		try:
+			# TODO : 버킷 정보 변수화
+			gcsSourceJson = self.GcsStorageUtil.json_loads_with_prefix_openfile(bucket, self.gcsDownloadBucketCode, gcsSourceFilePath,
+																		gcsSourceFileName)
+			for key,val in gcsSourceJson.items():
+				item[key] = val
+			item['source_status'] = 1
+			return item
 
-	# 			# TODO : 범용적으로 모듈화 로직 예정
-	# 			for children in field['children']:
-	# 				print(children)
-	# 				# # Header Text
-	# 				# if children['id'] == 101:	
-	# 				# 	name_uid = 'name_' + children['values']['uid']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label']}
+		except:
+			item.update({'source_status' : 0})
+			return item
 
-	# 				# # Line Break (pass)
-	# 				# elif children['id'] == 102:
-	# 				# 	continue
+	'''
+	result_json 관련 methods
+	'''	
+	# GCS ResultJson 데이터 Dict 대입
+	def setGcsResultJsonThread(self):
 
-	# 				# # Rich Editor
-	# 				# elif children['id'] == 103:	
-	# 				# 	name_uid = 'name_' + children['values']['uid']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id']}
-
-	# 				# # Import Data
-	# 				# elif children['id'] == 104:	
-	# 				# 	continue
-
-	# 				# # Long Text
-	# 				# elif children['id'] == 202:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # Short Text
-	# 				# elif children['id'] == 201:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # Radio Button
-	# 				# elif children['id'] == 203:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	options = {}
-	# 				# 	for option in children['values']['children']:
-	# 				# 		options[option['value']] = option['label']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
-
-	# 				# # CheckBox
-	# 				# elif children['id'] == 204:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	options = {}
-	# 				# 	for option in children['values']['children']:
-	# 				# 		options[str(option['value'])] = str(option['label'])
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
-
-	# 				# # Multi Select
-	# 				# elif children['id'] == 205:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	options = {}
-	# 				# 	for option in children['values']['children']:
-	# 				# 		options[str(option['value'])] = str(option['label'])
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
-
-	# 				# # Drop Down
-	# 				# elif children['id'] == 206:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	options = {}
-	# 				# 	for option in children['values']['children']:
-	# 				# 		options[str(option['value'])] = str(option['label'])
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label':children['values']['label'], 'options': options, 'description' : children['values']['description']}
-
-	# 				# # File Upload
-	# 				# elif children['id'] == 207:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # lookup
-	# 				# elif children['id'] == 208:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-	# 				# # Take Picture
-	# 				# elif children['id'] == 301:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # Image Bounding
-	# 				# elif children['id'] == 302:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': 'Image Bounding', 'value': children['values']}
-
-	# 				# # Recording
-	# 				# elif children['id'] == 304:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # 쌔로운거
-	# 				# elif children['id'] == 305:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': ''}
-					
-	# 				# # Take Video
-	# 				# elif children['id'] == 307:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': children['values']['label'], 'description' : children['values']['description']}
-
-	# 				# # Text Tagging (TODO : 개발 필요)
-	# 				# elif children['id'] == 309:
-	# 				# 	name_uid = children['values']['name']
-	# 				# 	self.labelDict[name_uid] = {'id': children['id'], 'label': 'Text Tagging'}
-
-	# 				# # 처음 보는 케이스 시 중지
-	# 				# else:
-	# 				# 	print("Result ID Type ERROR :: " + str(children['id']))
-	# 				# 	sys.exit()
-
-	# 			fieldIndex+=1
-	# 		index+=1
-
-	# GCS SourceJson 데이터 Dict 대입
-	def setGcsSourceJsonThread(self, requestInfo):
 		# ThreadPool
 		storage_client = storage.Client()
 		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
@@ -240,99 +162,37 @@ class DataLoad:
 			futures = []
 			items = self.resultData
 			for item in items:
-				futures.append(executor.submit(self.getGcsSourceJsonWorker, requestInfo=requestInfo, index=index, item = item, bucket=bucket))
+				futures.append(executor.submit(
+					self.getGcsResultJsonWorker
+					, index=index, item=item, bucket=bucket)
+				)
+
 				index += 1
+			
+			result_error = []
+			for future in concurrent.futures.as_completed(futures):
+				elem = future.result()
+				if (elem['result_status'] <= 0):
+					result_error.append(elem['data_idx'])	
+				else:
+					pass
+		return result_error
+	def field_recursive(self, field,result,total):
+		if type((field)) == dict:
+			total.append(result)
+		else:
+			for f,r in zip(field,result):
+				self.field_recursive(f,r,total)
+		return total
 
-
-	def getGcsSourceJsonWorker(self, requestInfo, index, item, bucket):
-		print('setGcsSourceJson:: Processing...[', index, ']')
+	
+	def getGcsResultJsonWorker(self, index, item, bucket):
+		print('setGcsResultJson:: Processing...[', index, '] : ')
 		key = item['data_idx']
-		return_data = item.update({'source_status' : 1})
-
-
+		item.update({'result_status' : 1})
 		dataIdx = str(item['data_idx'])
-		projectId = requestInfo.projectId
-		sourceIdx = str(item['source_id'])
-		gcsSourceFilePath = self.PathUtil.getGcsSourceFilePath(requestInfo.groupId, projectId)
-		gcsSourceFileName = self.PathUtil.getGcsSourceFileName(sourceIdx, projectId)
-
-		try:
-			# TODO : 버킷 정보 변수화
-			gcsSourceJson = self.GcsStorageUtil.json_loads_with_prefix_openfile(bucket, self.gcsDownloadBucketCode, gcsSourceFilePath,
-																	   gcsSourceFileName)
-
-			for key,val in gcsSourceJson.items():
-				item[key] = val
-		
-			item['source_status'] = 1
-			return item
-
-		except:
-			print('get source failed : ', )
-			item.update({'source_status' : 0})
-			return item
-
-
-	# GCS ResultJson 데이터 Dict 대입
-	def setGcsResultJsonThread(self, requestInfo):
-
-		# ThreadPool
-		executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
-
-		storage_client = storage.Client()
-		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
-
-		index = 0
-		failIndex = 0
-		futures = []
-		items = self.resultDict.items()
-		for key, value in items:
-			futures.append(executor.submit(
-				self.getGcsResultJsonWorker
-				, requestInfo=requestInfo
-				, index=index, key=key, value=value, bucket=bucket)
-			)
-
-			index += 1
-
-		index = 0
-		for future in concurrent.futures.as_completed(futures):
-			data = future.result()
-			if data['status'] <= 0:
-				self.gcsResultJsonNotFind[str(data['data_idx'])] = data['data_idx']
-				failIndex += 1
-			else:
-				self.resultDict[data['data_idx']]['result_data'] = data
-
-				# for k, v in data.items():
-
-				# 	if k == "status" or k == "data_idx":
-				# 		continue
-				# 	else:
-				# 		self.resultDict[data['data_idx']][k] = v
-				# 		pass
-
-			# 이름에 대해 카운트가 필요할 때(name_count_dict)
-			# self.resultDict['hanwha_file_list'] = {}
-
-			index += 1
-
-		self.gcsResultCount = index
-		self.gcsResultFailCount = failIndex
-		print('GcsResultJsonFile Count : ', index)
-		print('GcsResultJsonFile Fail Count : ', failIndex)
-		if failIndex > 0 :
-			print("GcsResultJsonFile Fail Data : " + ", ".join(list(self.gcsResultJsonNotFind.keys())))
-
-	def getGcsResultJsonWorker(self, requestInfo, index, key, value, bucket):
-		
-		print('setGcsResultJson:: Processing...[', index, '] : ', key)
-
-		return_data = {'status': 1, 'data_idx':key, 'result_data':{}}
-		dataIdx = value['data_idx']
-		projectId = requestInfo.projectId # 단일 프로젝트 ID
-
-		gcsResultFilePath = self.PathUtil.getGcsResultFilePath(requestInfo.groupId, projectId)
+		projectId = str(item['project_id'])
+		gcsResultFilePath = self.PathUtil.getGcsResultFilePath(str(item['customer_group_id']), projectId)
 		gcsResultFileName = self.PathUtil.getGCSResultFileName(dataIdx, projectId)
 
 		# TODO : 버킷 정보 변수화
@@ -344,174 +204,112 @@ class DataLoad:
 				, gcsResultFileName
 			)
 		except Exception as e:
-			logging.exception('Fail : ', dataIdx)
-			return_data['status'] = 0
-			return return_data
-
+			item['result_status'] = 0
+			return item
+	
+     	
 		try:
 			tmp = []
-			for field in gcsResultJson['results']:
-				tmp.append(field)
-				for result in field:
-					
-					if result != None:
-						for rKey, rVal in result.items():
-							return_data['result_data'].update({rKey: rVal})
-						# 간혹 결과 값이 비워져 있어서 신뢰 할수 없음.
-						# self.resultDict[key]['source'].update({rKey: gcsResultJson['sources'][fieldIndex]})
-			return_data['status'] = 1
+			# for json download
+			# with open ('/data/collection/PRJ3394/'+gcsResultFileName,'w')as f:
+			# 	json.dump(gcsResultJson,f,indent=4)
+			# total_keys = []
+			# t= self.field_recursive(gcsResultJson['fields'], gcsResultJson['results'],tmp)
+			# print(t)
+				
+				# for second in first:
+				# 	if second !=[]
+			item['result'] = gcsResultJson['results']
+			# item['reason'] = gcsResultJson['works']['histories'][0]['description']
+			# item['fields'] = gcsResultJson['fields'][0]['children'][0]['values']['advanced']['config']
+			# for field in gcsResultJson['results']:
+			# 	for result in field:
+			# 		print(result)
+			# 		if result != None:
+			# 			for rKey, rVal in result.items():
+			# 				return_data['result_data'].update({rKey: rVal})
+			# 			# 간혹 결과 값이 비워져 있어서 신뢰 할수 없음.
+			# 			# self.resultDict[key]['source'].update({rKey: gcsResultJson['sources'][fieldIndex]})
+			item['result_status'] = 1
 
 		except Exception as e:
 			logging.exception('No result_json : ', dataIdx)
-			return_data['status'] = 0
-			return return_data
-		return_data['result_data'] = tmp
-		return return_data
+			item['result_status'] = 0
+			return item
+		item['result_data'] = tmp
+		return item
 
-	def setGcsContentFileThread(self, requestInfo, source_obj_name, localDownloadDefaultPath):
 
+	def setGcsContentFileThread(self, source_obj_name, localDownloadDefaultPath):
+		content_error = []
 		# ThreadPool
-		executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
+		with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+			storage_client = storage.Client()
+			bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
 
-		storage_client = storage.Client()
-		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
+			index = 0
+			failIndex = 0
+			futures = []
+			items = self.resultData
+			for item in items:
+				futures.append(executor.submit(self.setGcsContentFileWorker, index=index, item = item, source_obj_name=source_obj_name, localDownloadDefaultPath=localDownloadDefaultPath, bucket=bucket))
+				index += 1
+    
+			for future in concurrent.futures.as_completed(futures):
+				elem = future.result()
+			if (elem['content_status'] <= 0):
+				content_error.append(elem['data_idx'])	
+			else:
+				pass
+			return content_error
+		
+  		# for future in concurrent.futures.as_completed(futures):
+		# 	data = future.result()
+		# 	if data['status'] <= 0:
+		# 		self.gcsContentFileNotFind[data['data_idx']] = data['data_idx']
+		# 		failIndex += 1
+		# 	else :
+		# 		self.resultDict[data['data_idx']]['content_data'] = data['content_data']
 
-		index = 0
-		failIndex = 0
-		futures = []
-		items = self.resultDict.items()
-		for key, value in items:
+		# 	index += 1
 
-			futures.append(executor.submit(self.setGcsContentFileWorker, requestInfo=requestInfo, index=index, key=key, value=value, source_obj_name=source_obj_name, localDownloadDefaultPath=localDownloadDefaultPath, bucket=bucket))
+		# self.gcsContentFileCount = index
+		# self.gcsContentFileFailCount = failIndex
+		# print('GcsContentFile Count : ', index)
+		# print('GcsContentFile Fail Count : ', failIndex)
+		# if failIndex > 0 :
+		# 	print("GcsContentFile Fail Data : " + ", ".join(list(self.gcsContentFileNotFind.keys())))
 
-			index += 1
+	def setGcsContentFileWorker(self, index, item, source_obj_name, localDownloadDefaultPath, bucket):
 
-		index = 0
-		for future in concurrent.futures.as_completed(futures):
-			data = future.result()
-			if data['status'] <= 0:
-				self.gcsContentFileNotFind[data['data_idx']] = data['data_idx']
-				failIndex += 1
-			else :
-				self.resultDict[data['data_idx']]['content_data'] = data['content_data']
+		print('setGcsResultJson:: Processing...[', index, '] : ')
 
-			index += 1
+		item.update({'content_status' : 1})
+		projectId = str(item['project_id'])
 
-		self.gcsContentFileCount = index
-		self.gcsContentFileFailCount = failIndex
-		print('GcsContentFile Count : ', index)
-		print('GcsContentFile Fail Count : ', failIndex)
-		if failIndex > 0 :
-			print("GcsContentFile Fail Data : " + ", ".join(list(self.gcsContentFileNotFind.keys())))
+		contents_path = self.PathUtil.getGcsContentFilePath(str(item['customer_group_id']), projectId)
+		
+		contents_file_path = contents_path + item[source_obj_name]
 
-	def setGcsContentFileWorker(self, requestInfo, index, key, value, source_obj_name, localDownloadDefaultPath, bucket):
-
-		print('setGcsResultJson:: Processing...[', index, '] : ', key)
-
-		return_data = {'status': 1, 'data_idx':key, 'content_data':{}}
-		dataIdx = value['data_idx']
-		projectId = requestInfo.projectId # 단일 프로젝트 ID
-
-		contents_path = self.PathUtil.getGcsContentFilePath(requestInfo.groupId, projectId)
-		contents_file_path = contents_path + value['source_data'][source_obj_name]
 		try:
 			######
 			## TODO 소스 파일명 변경
 			######
 			# source_value = value['source_data'][source_obj_name].split('/')[1]
-			source_value = value['source_data'][source_obj_name]
+			source_value = item[source_obj_name]
 			dest_parent_path = pathlib.Path(localDownloadDefaultPath + source_value).parent.absolute()
+			
 			
 			if os.path.isdir(dest_parent_path) == False:
 				self.PathUtil.mkdir_p(dest_parent_path)
 
 			self.GcsStorageUtil.download_blob_openfile(bucket, self.gcsDownloadBucketCode, contents_file_path, localDownloadDefaultPath + source_value)
-			return_data['content_data'] = {'path' : localDownloadDefaultPath, 'file_name' : value['source_data'][source_obj_name]}
-			return_data['status'] = 1
-			return return_data
+			# return_data['content_data'] = {'path' : localDownloadDefaultPath, 'file_name' : value['source_data'][source_obj_name]}
+			# return_data['status'] = 1
+			# return return_data
+			item['content_status'] = 1
+			return item
 
 		except:
-			logging.exception('Fail : ', dataIdx)
-
-			return_data['status'] = 0
-			return return_data
-
-	def setuncleanGcsResultJsonThread(self, requestInfo):
-
-		# ThreadPool
-		executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
-
-		storage_client = storage.Client()
-		bucket = storage_client.get_bucket(self.gcsDownloadBucketCode)
-
-		index = 0
-		failIndex = 0
-		futures = []
-		items = self.resultDict.items()
-		for key, value in items:
-			futures.append(executor.submit(
-				self.getsetuncleanGcsResultJsonWorker
-				, requestInfo=requestInfo
-				, index=index, key=key, value=value, bucket=bucket)
-			)
-
-			index += 1
-
-		index = 0
-		for future in concurrent.futures.as_completed(futures):
-			data = future.result()
-			if data['status'] <= 0:
-				self.gcsResultJsonNotFind[str(data['data_idx'])] = data['data_idx']
-				failIndex += 1
-			else:
-				self.resultDict[data['data_idx']]['result_data'] = {}
-
-				for k, v in data.items():
-
-					if k == "status" or k == "data_idx":
-						continue
-					else:
-						self.resultDict[data['data_idx']][k] = v
-						pass
-
-			# 이름에 대해 카운트가 필요할 때(name_count_dict)
-			# self.resultDict['hanwha_file_list'] = {}
-
-			index += 1
-
-		self.gcsResultCount = index
-		self.gcsResultFailCount = failIndex
-		print('GcsResultJsonFile Count : ', index)
-		print('GcsResultJsonFile Fail Count : ', failIndex)
-		if failIndex > 0 :
-			print("GcsResultJsonFile Fail Data : " + ", ".join(list(self.gcsResultJsonNotFind.keys())))
-
-	def getsetuncleanGcsResultJsonWorker(self, requestInfo, index, key, value, bucket):
-		
-		print('setGcsResultJson:: Processing...[', index, '] : ', key)
-
-		return_data = {'status': 1, 'data_idx':key, 'result_data':{}}
-		dataIdx = value['data_idx']
-		projectId = requestInfo.projectId # 단일 프로젝트 ID
-
-		gcsResultFilePath = self.PathUtil.getGcsResultFilePath(requestInfo.groupId, projectId)
-		gcsResultFileName = self.PathUtil.getGCSResultFileName(dataIdx, projectId)
-
-		# TODO : 버킷 정보 변수화
-		try:
-			gcsResultJson = self.GcsStorageUtil.json_loads_with_prefix_openfile(
-				bucket
-				, self.gcsDownloadBucketCode
-				, gcsResultFilePath
-				, gcsResultFileName
-			)
-		except Exception as e:
-			logging.exception('Fail : ', dataIdx)
-			return_data['status'] = 0
-			return return_data
-		return_data['result_data'] = gcsResultJson['results']
-		return_data['status'] = 1
-
-		return return_data
-
-		
+			item['content_status'] = 0
+			return item

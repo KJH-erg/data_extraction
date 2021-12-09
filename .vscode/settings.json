@@ -1,0 +1,5 @@
+{
+    "jupyter.jupyterServerType": "local",
+    "python.sortImports.path": "/home/de/anaconda3/envs/jhoon_env/bin/python3.7",
+    "python.pythonPath": "/home/de/anaconda3/envs/jhoon_env/bin/python"
+}
